@@ -281,7 +281,7 @@ Panel {
                             required property var modelData
                             Layout.fillWidth: true
                             Text {
-                                text: String(modelData.name || "Phone")
+                                text: String(deviceRow.modelData.name || "Phone")
                                 color: Color.foreground
                                 font.family: Style.font.family
                                 font.pixelSize: Style.font.body
@@ -289,9 +289,9 @@ Panel {
                                 elide: Text.ElideRight
                             }
                             Text {
-                                text: modelData.connected ? "●" : "○"
-                                color: modelData.connected ? Color.accent : Color.foreground
-                                opacity: modelData.connected ? 1 : .45
+                                text: deviceRow.modelData.connected ? "●" : "○"
+                                color: deviceRow.modelData.connected ? Color.accent : Color.foreground
+                                opacity: deviceRow.modelData.connected ? 1 : .45
                                 font.pixelSize: Style.font.body
                             }
                             PortalButton {

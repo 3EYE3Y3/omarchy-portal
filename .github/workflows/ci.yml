@@ -1,0 +1,33 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  portable-checks:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - name: Python tests
+        run: python -m unittest discover -v
+      - name: Python compile and safety checks
+        run: |
+          python -m compileall -q portal tests
+          python scripts/python-quality.py
+      - name: JavaScript syntax
+        run: |
+          node --check web/app.js
+          node --check web/sw.js
+      - name: Shell syntax
+        run: bash -n bin/portal scripts/install-cli scripts/install-keybinding scripts/quality scripts/uninstall-local

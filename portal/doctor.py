@@ -57,7 +57,8 @@ def report(plugin_root: Path, state_dir: Path) -> dict:
         try:
             pid = int(json.loads(runtime.read_text()).get("pid", 0))
             os.kill(pid, 0)
-            ready = True
+            cmdline = Path(f"/proc/{pid}/cmdline").read_bytes().replace(b"\0", b" ")
+            ready = b"portal.cli" in cmdline or b"/bin/portal" in cmdline
         except (OSError, ValueError, json.JSONDecodeError):
             pass
     features = {

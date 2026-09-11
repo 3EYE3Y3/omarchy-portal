@@ -166,8 +166,9 @@ Item {
                 model: markerWindow.localMarkers
 
                 delegate: Rectangle {
+                    id: markerCard
                     required property var modelData
-                    readonly property var win: modelData.window || {}
+                    readonly property var win: markerCard.modelData.window || {}
                     readonly property var origin: win.at || [0, 0]
                     readonly property var extent: win.size || [200, 200]
                     width: 110
@@ -189,7 +190,7 @@ Item {
                             height: 92
                             columns: count
                             rows: count
-                            readonly property var matrixRows: modelData.qr || []
+                            readonly property var matrixRows: markerCard.modelData.qr || []
                             readonly property int count: matrixRows.length
                             Repeater {
                                 model: parent.count * parent.count
@@ -204,7 +205,7 @@ Item {
 
                         Text {
                             width: 96
-                            text: String(win.class || "WINDOW").toUpperCase()
+                            text: String(markerCard.win.class || "WINDOW").toUpperCase()
                             elide: Text.ElideRight
                             horizontalAlignment: Text.AlignHCenter
                             color: "#151611"

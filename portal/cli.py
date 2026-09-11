@@ -50,7 +50,11 @@ def runtime_status(c: PortalCore) -> dict:
     running, runtime = False, {}
     try:
         runtime = json.loads(runtime_path.read_text())
-        os.kill(int(runtime["pid"]), 0)
+        pid = int(runtime["pid"])
+        os.kill(pid, 0)
+        cmdline = Path(f"/proc/{pid}/cmdline").read_bytes().replace(b"\0", b" ")
+        if b"portal.cli" not in cmdline and b"/bin/portal" not in cmdline:
+            raise OSError("runtime PID does not belong to Portal")
         running = True
     except (OSError, KeyError, ValueError, json.JSONDecodeError):
         pass
@@ -132,11 +136,13 @@ def main(argv=None) -> int:
             ):
                 pair = c.start_pairing()
                 pair["qr"] = matrix(pair["url"])
+                pair.pop("secret", None)
                 value["pairing"] = pair
             output(value, args.json)
         elif args.command == "pair":
             value = c.start_pairing()
             value["qr"] = matrix(value["url"])
+            value.pop("secret", None)
             cert, _ = ensure_certificate(state_dir(), lan_ip())
             value["certificate_sha256"] = hashlib.sha256(cert.read_bytes()).hexdigest()
             output(value, args.json)
@@ -161,6 +167,7 @@ def main(argv=None) -> int:
                 value = c.vision_status()
                 for marker in value.get("markers", []):
                     marker["qr"] = matrix(marker["url"])
+                    marker.pop("token", None)
             else:
                 active = args.action == "on" or (args.action == "toggle" and not old)
                 value = c.set_vision(active)
