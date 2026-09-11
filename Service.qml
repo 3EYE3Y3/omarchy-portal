@@ -12,8 +12,13 @@ Item {
 
     property var shell: null
     property var manifest: null
-    readonly property string pluginDir: manifest && manifest.__sourceDir ? String(manifest.__sourceDir) : ""
-    readonly property string portalBin: pluginDir + "/bin/portal"
+    // Third-party manifests are deliberately sanitized before the shell injects
+    // them, so private registry metadata such as __sourceDir is unavailable here.
+    // Resolve the executable from this component instead; that is stable across
+    // login, shell restart, plugin rescan, and non-ASCII/space-containing paths.
+    readonly property string portalBin: decodeURIComponent(
+        Qt.resolvedUrl("bin/portal").toString().replace(/^file:\/\//, ""))
+    readonly property string pluginDir: portalBin.replace(/\/bin\/portal$/, "")
     property bool ready: false
     property string url: ""
     property string error: ""
@@ -29,14 +34,14 @@ Item {
     }
 
     function refresh() {
-        if (!statusProc.running && pluginDir !== "") {
+        if (!statusProc.running) {
             statusProc.command = runPortal(["status", "--json"]);
             statusProc.running = true;
         }
     }
 
     function refreshVision() {
-        if (!visionProc.running && pluginDir !== "") {
+        if (!visionProc.running) {
             visionProc.command = runPortal(["vision", "status", "--json"]);
             visionProc.running = true;
         }
@@ -75,7 +80,7 @@ Item {
     Timer {
         id: restartTimer
         interval: 3000
-        onTriggered: if (!daemon.running && service.pluginDir !== "")
+        onTriggered: if (!daemon.running)
             daemon.running = true
     }
 
@@ -219,8 +224,5 @@ Item {
         }
     }
 
-    Component.onCompleted: if (pluginDir !== "")
-        daemon.running = true
-    onPluginDirChanged: if (pluginDir !== "" && !daemon.running)
-        daemon.running = true
+    Component.onCompleted: daemon.running = true
 }

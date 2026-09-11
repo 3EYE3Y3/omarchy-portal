@@ -1,5 +1,10 @@
 # Changelog
 
+## [0.9.1] - 2026-09-11
+
+- Fix automatic backend startup after login, reboot, plugin rescan, and `omarchy restart shell` by resolving the bundled launcher relative to `Service.qml` instead of relying on private manifest metadata that Omarchy removes from third-party manifests.
+- Preserve one shell-owned unprivileged daemon and its three-second restart after unexpected exit.
+
 ## [0.9.0] - 2026-09-11
 
 Local Acceptance Candidate.
@@ -11,4 +16,3 @@ Local Acceptance Candidate.
 - Session/window-bound, expiring, single-use Portal Vision markers.
 - Optional structured X-Ray integration.
 - Doctor CLI, automated security/edge tests, architecture/privacy/security/compatibility documentation.
-

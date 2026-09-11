@@ -6,7 +6,7 @@ Portal is a secure, LAN-only phone-to-Omarchy control plane. It moves context, f
 
 ![Portal desktop panel and phone preview](docs/preview.svg)
 
-Portal v0.9.0 is a **Local Acceptance Candidate** for Omarchy 4.0.2. It has no analytics, cloud account, relay or WAN mode.
+Portal v0.9.1 is a **Local Acceptance Candidate** for Omarchy 4.0.2. It has no analytics, cloud account, relay or WAN mode.
 
 ## What it does
 
@@ -20,7 +20,7 @@ Portal v0.9.0 is a **Local Acceptance Candidate** for Omarchy 4.0.2. It has no a
 
 ## Architecture
 
-The Omarchy plugin contains a native QML bar widget/panel and a long-lived service component. The component owns an unprivileged Python HTTPS process. A zero-framework PWA talks to that service with short-lived opaque sessions. SQLite stores hashes and metadata; transfer payloads are mode `0600` under `~/.local/state/portal/inbox`.
+The Omarchy plugin contains a native QML bar widget/panel and a long-lived service component. When the enabled service loads at login or after `omarchy restart shell`, it automatically starts and owns an unprivileged Python HTTPS process. A zero-framework PWA talks to that service with short-lived opaque sessions. SQLite stores hashes and metadata; transfer payloads are mode `0600` under `~/.local/state/portal/inbox`.
 
 See [Architecture](docs/ARCHITECTURE.md), [Security](SECURITY.md), [Privacy](docs/PRIVACY.md), and [upstream compatibility](docs/UPSTREAM_COMPATIBILITY.md).
 
@@ -129,6 +129,6 @@ For safety the script retains `~/.local/state/portal`; inspect it, then remove i
 - **Control says permission required:** grant `pointer` and `keyboard` explicitly with `portal device permissions`.
 - **No media bar:** start an MPRIS-capable player; the bar is hidden when there is no player or metadata.
 - **X-Ray hidden:** verify `xray --json <target>` returns a JSON object within two seconds.
-- **Doctor reports service unavailable:** the plugin service starts when enabled. Inspect `quickshell log` and ensure port `59443` is free.
+- **Doctor reports service unavailable:** the plugin service starts when enabled, including after login and `omarchy restart shell`. Inspect `quickshell log` and ensure port `59443` is free.
 
 Portal is not submitted to the Omarchy Marketplace. Human local acceptance comes first.

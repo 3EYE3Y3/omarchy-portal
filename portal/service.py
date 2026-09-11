@@ -137,7 +137,7 @@ class Handler(BaseHTTPRequestHandler):
             parsed = self.parsed()
             path = parsed.path
             if path == "/api/health":
-                return self.json(200, {"status": "ready", "version": "0.9.0"})
+                return self.json(200, {"status": "ready", "version": "0.9.1"})
             if path.startswith("/api/pair/"):
                 request_id = path.rsplit("/", 1)[-1]
                 claim = self.headers.get("X-Portal-Claim", "")
