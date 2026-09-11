@@ -1,0 +1,17 @@
+#!/usr/bin/env bash
+set -euo pipefail
+plugin_root="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)"
+target_dir="${XDG_BIN_HOME:-$HOME/.local/bin}"
+mkdir -p "$target_dir"
+target="$target_dir/portal"
+if [[ -e "$target" ]]; then
+  backup="$target.portal-backup.$(date +%s)"
+  cp -- "$target" "$backup"
+  echo "Backed up existing portal command to $backup"
+fi
+escaped_root=${plugin_root//\/\\}
+escaped_root=${escaped_root//\&/\\&}
+sed "s|@PORTAL_ROOT@|$escaped_root|g" "$plugin_root/scripts/portal-wrapper.in" >"$target"
+chmod 0755 "$target"
+echo "Installed Portal CLI at $target"
+

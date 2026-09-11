@@ -1,0 +1,24 @@
+#!/usr/bin/env bash
+set -euo pipefail
+root="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)"
+cd "$root"
+python3 -m compileall -q portal tests
+python3 -m unittest discover -s tests -v
+python3 scripts/python-quality.py
+node --check web/app.js
+node --check web/sw.js
+omarchy plugin validate "$root"
+for script in bin/portal scripts/install-cli scripts/install-keybinding scripts/uninstall-local scripts/quality; do
+  bash -n "$script"
+done
+if command -v shellcheck >/dev/null; then shellcheck bin/portal scripts/install-cli scripts/install-keybinding scripts/uninstall-local scripts/quality; else echo "SKIP shellcheck (not installed)"; fi
+qml_lint="$(command -v qmllint || true)"
+[[ -n "$qml_lint" ]] || [[ ! -x /usr/lib/qt6/bin/qmllint ]] || qml_lint=/usr/lib/qt6/bin/qmllint
+if [[ -n "$qml_lint" ]]; then
+  import_root="$(mktemp -d)"
+  cleanup_import_root() { unlink "$import_root/qs" 2>/dev/null || true; rmdir "$import_root" 2>/dev/null || true; }
+  trap cleanup_import_root EXIT
+  ln -s /usr/share/omarchy/shell "$import_root/qs"
+  "$qml_lint" -W 9999 -I "$import_root" BarWidget.qml Panel.qml Service.qml
+else echo "SKIP qmllint (not installed)"; fi
+git diff --check

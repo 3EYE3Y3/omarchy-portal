@@ -1,0 +1,13 @@
+#!/usr/bin/env bash
+set -euo pipefail
+plugin_id="io.github.3eye3y3.portal"
+if omarchy plugin list --json | jq -e --arg id "$plugin_id" 'any(.[]; .id == $id)' >/dev/null; then
+  omarchy plugin disable "$plugin_id" || true
+  omarchy plugin remove "$plugin_id" --yes
+fi
+cli="${XDG_BIN_HOME:-$HOME/.local/bin}/portal"
+if [[ -f "$cli" ]] && rg -F 'python3 -m portal.cli' "$cli" >/dev/null; then
+  rm -- "$cli"
+fi
+echo "Portal plugin and generated CLI wrapper removed. State remains in ~/.local/state/portal for manual review/removal."
+

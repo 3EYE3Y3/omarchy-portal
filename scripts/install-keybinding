@@ -1,0 +1,24 @@
+#!/usr/bin/env bash
+set -euo pipefail
+bindings="$HOME/.config/hypr/bindings.lua"
+line='o.bind("SUPER + CTRL + SHIFT + P", "Portal — Take This", "portal take")'
+[[ -f "$bindings" ]] || { echo "Missing $bindings" >&2; exit 1; }
+if rg -F 'Portal — Take This' "$bindings" >/dev/null; then
+  echo "Portal keybinding already installed"
+  exit 0
+fi
+if omarchy menu keybindings --print | rg -F 'SUPER CTRL SHIFT + P' >/dev/null; then
+  echo "SUPER+CTRL+SHIFT+P is already assigned; choose another key in $bindings" >&2
+  exit 1
+fi
+backup="$bindings.portal-backup.$(date +%s)"
+cp -- "$bindings" "$backup"
+printf '\n-- Portal uses a safe alternative because SUPER+SHIFT+P opens Google Photos.\n%s\n' "$line" >>"$bindings"
+hyprctl reload
+if [[ -n "$(hyprctl configerrors)" ]]; then
+  echo "Hyprland reported configuration errors; backup is $backup" >&2
+  hyprctl configerrors >&2
+  exit 1
+fi
+echo "Installed Portal Take This binding: SUPER+CTRL+SHIFT+P"
+
