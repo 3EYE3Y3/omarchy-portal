@@ -43,10 +43,21 @@ class CertificateProfileTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as temp:
             cert, key = ensure_certificate(Path(temp), "192.168.4.33")
             details = openssl("x509", "-in", str(cert), "-noout", "-text")
+            names = openssl(
+                "x509",
+                "-in",
+                str(cert),
+                "-noout",
+                "-subject",
+                "-issuer",
+                "-nameopt",
+                "RFC2253",
+            )
 
             self.assertEqual(details.returncode, 0, details.stderr)
-            self.assertIn("Subject: CN=Portal Local", details.stdout)
-            self.assertIn("Issuer: CN=Portal Local", details.stdout)
+            self.assertEqual(names.returncode, 0, names.stderr)
+            self.assertIn("subject=CN=Portal Local", names.stdout)
+            self.assertIn("issuer=CN=Portal Local", names.stdout)
             self.assertIn("Public Key Algorithm: rsaEncryption", details.stdout)
             self.assertIn(f"Public-Key: ({CERTIFICATE_RSA_BITS} bit)", details.stdout)
             self.assertIn("Signature Algorithm: sha256WithRSAEncryption", details.stdout)
