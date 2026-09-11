@@ -2,7 +2,7 @@
 
 ## Scope and threat model
 
-Portal v0.9 is for a trusted local network. It binds one exact RFC1918/private LAN address (or loopback), never `0.0.0.0`, and has no relay, discovery beacon, UPnP, router automation or WAN mode. A host firewall remains recommended on hostile networks.
+Portal v0.9 is for a trusted local network. With a usable LAN route it listens on the host's IPv4 interfaces so a transient VPN address cannot strand the service, but advertises only an active RFC1918 source associated with the preferred main-table default route. With no usable private route, both listen and advertised addresses fall back to loopback. It has no relay, discovery beacon, UPnP, router automation or WAN mode. A host firewall remains recommended on hostile networks.
 
 Portal protects against passive LAN interception with TLS 1.2+ and a local 30-day self-signed Ed25519 certificate. Because public WebPKI cannot issue certificates for private IP addresses, first use requires a browser certificate exception. On an untrusted LAN, verify the SHA-256 certificate fingerprint shown by:
 
@@ -22,7 +22,7 @@ This pairing is not a PAKE and does not make a user-approved incorrect certifica
 - Sessions expire after 24 hours and are invalidated by disconnect/revoke.
 - Device identity includes a random browser-generated public identifier and a 256-bit device credential; user-agent text is display metadata only.
 - No authentication cookies are used. API requests require an `Authorization: Bearer` header, avoiding ambient-cookie CSRF.
-- Browser origins are checked against the exact Portal origins. WebSocket is not used in v0.9, so there is no unauthenticated WebSocket surface.
+- Browser origins are checked against the exact advertised Portal and loopback origins; wildcard listen addresses are never accepted as browser origins. WebSocket is not used in v0.9, so there is no unauthenticated WebSocket surface.
 
 ## Capability model
 
@@ -45,4 +45,3 @@ Markers contain random selectors, not durable authentication credentials. Each s
 Please use GitHub's private vulnerability reporting for this repository. Do not include real clipboard content, tokens, certificates, Inbox files, URLs or database files. Include Portal/Omarchy/Hyprland versions and a minimal reproduction. Security fixes take priority over feature work.
 
 Supported security release: `0.9.x` until local acceptance determines `1.0.0`.
-

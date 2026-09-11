@@ -1,5 +1,11 @@
 # Changelog
 
+## [0.9.2] - 2026-09-11
+
+- Select the advertised IPv4 address from the active source address on the preferred main-table default route instead of a public UDP routing probe.
+- Cross-check route sources against active interface addresses, ignore unrelated VPN/container addresses, and fall back to loopback when no usable private default route exists.
+- Listen independently on `0.0.0.0` while keeping QR codes, displayed URLs, TLS certificates, runtime status, and exact-origin checks tied to the advertised LAN address.
+
 ## [0.9.1] - 2026-09-11
 
 - Fix automatic backend startup after login, reboot, plugin rescan, and `omarchy restart shell` by resolving the bundled launcher relative to `Service.qml` instead of relying on private manifest metadata that Omarchy removes from third-party manifests.

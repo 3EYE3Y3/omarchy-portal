@@ -260,6 +260,16 @@ Panel {
                         font.family: Style.font.family
                         font.pixelSize: Style.font.caption
                     }
+                    Text {
+                        Layout.maximumWidth: Style.space(300)
+                        Layout.alignment: Qt.AlignHCenter
+                        text: String(root.pairing?.url || "").split("#")[0]
+                        elide: Text.ElideMiddle
+                        color: Color.foreground
+                        opacity: .72
+                        font.family: Style.font.family
+                        font.pixelSize: Style.font.caption
+                    }
                 }
 
                 ColumnLayout {

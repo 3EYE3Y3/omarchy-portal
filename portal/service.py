@@ -7,7 +7,6 @@ import json
 import mimetypes
 import os
 import signal
-import socket
 import ssl
 import subprocess
 import sys
@@ -137,7 +136,7 @@ class Handler(BaseHTTPRequestHandler):
             parsed = self.parsed()
             path = parsed.path
             if path == "/api/health":
-                return self.json(200, {"status": "ready", "version": "0.9.1"})
+                return self.json(200, {"status": "ready", "version": "0.9.2"})
             if path.startswith("/api/pair/"):
                 request_id = path.rsplit("/", 1)[-1]
                 claim = self.headers.get("X-Portal-Claim", "")
@@ -436,35 +435,129 @@ class Handler(BaseHTTPRequestHandler):
         self.wfile.write(raw)
 
 
-def lan_ip() -> str:
-    override = os.environ.get("PORTAL_BIND_ADDRESS", "")
-    if override:
-        address = override
-    else:
-        sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-        try:
-            sock.connect(("1.1.1.1", 80))
-            address = sock.getsockname()[0]
-        except OSError:
-            address = "127.0.0.1"
-        finally:
-            sock.close()
-    # Refuse globally-routable or link-local surprises; LAN-only RFC1918 or loopback.
+RFC1918_NETWORKS = tuple(
+    ipaddress.ip_network(network)
+    for network in ("10.0.0.0/8", "172.16.0.0/12", "192.168.0.0/16")
+)
+
+
+def _ipv4(address: object) -> ipaddress.IPv4Address | None:
     try:
-        parsed = ipaddress.ip_address(address)
+        parsed = ipaddress.ip_address(str(address))
     except ValueError:
-        return "127.0.0.1"
-    if parsed.version != 4 or not (parsed.is_private or parsed.is_loopback):
-        return "127.0.0.1"
-    return address
+        return None
+    return parsed if isinstance(parsed, ipaddress.IPv4Address) else None
+
+
+def advertised_address_allowed(address: str) -> bool:
+    parsed = _ipv4(address)
+    return bool(
+        parsed
+        and (parsed.is_loopback or any(parsed in network for network in RFC1918_NETWORKS))
+    )
+
+
+def listen_address_allowed(address: str) -> bool:
+    return address == "0.0.0.0" or advertised_address_allowed(address)
+
+
+def loopback_address(address: str) -> bool:
+    parsed = _ipv4(address)
+    return bool(parsed and parsed.is_loopback)
 
 
 def private_bind(address: str) -> bool:
+    """Compatibility name for callers checking Portal's permitted listen policy."""
+
+    return listen_address_allowed(address)
+
+
+def select_default_route_address(routes: list[dict], interfaces: list[dict]) -> str:
+    """Choose an active RFC1918 source on a main-table IPv4 default route."""
+
+    assigned: dict[str, list[tuple[ipaddress.IPv4Address, int]]] = {}
+    for interface in interfaces:
+        if not isinstance(interface, dict):
+            continue
+        ifname = interface.get("ifname")
+        if not isinstance(ifname, str):
+            continue
+        candidates = []
+        for info in interface.get("addr_info") or []:
+            if not isinstance(info, dict):
+                continue
+            if info.get("family") != "inet" or info.get("scope") != "global":
+                continue
+            if info.get("tentative") or info.get("dadfailed"):
+                continue
+            if info.get("valid_life_time") == 0 or info.get("preferred_life_time") == 0:
+                continue
+            parsed = _ipv4(info.get("local"))
+            if not parsed or not advertised_address_allowed(str(parsed)):
+                continue
+            try:
+                prefix = int(info.get("prefixlen", 32))
+            except (TypeError, ValueError):
+                prefix = 32
+            candidates.append((parsed, prefix))
+        if candidates:
+            assigned[ifname] = candidates
+
+    def route_priority(item: tuple[int, dict]) -> tuple[bool, int, int]:
+        index, route = item
+        if not isinstance(route, dict):
+            return (True, 2**31, index)
+        try:
+            metric = int(route.get("metric", 0))
+        except (TypeError, ValueError):
+            metric = 0
+        # A gateway-backed LAN route is preferred to a point-to-point tunnel;
+        # metrics retain the kernel's preference among routes of the same kind.
+        return (not bool(route.get("gateway")), metric, index)
+
+    for _, route in sorted(enumerate(routes), key=route_priority):
+        if not isinstance(route, dict):
+            continue
+        if route.get("dst") not in (None, "default", "0.0.0.0/0"):
+            continue
+        if "linkdown" in (route.get("flags") or []):
+            continue
+        candidates = assigned.get(route.get("dev"), [])
+        if not candidates:
+            continue
+        preferred = _ipv4(route.get("prefsrc") or route.get("src"))
+        if preferred and any(preferred == local for local, _ in candidates):
+            return str(preferred)
+        gateway = _ipv4(route.get("gateway"))
+        if gateway:
+            for local, prefix in candidates:
+                try:
+                    if gateway in ipaddress.ip_network(f"{local}/{prefix}", strict=False):
+                        return str(local)
+                except ValueError:
+                    continue
+        return str(candidates[0][0])
+    return "127.0.0.1"
+
+
+def _ip_json(command: list[str]) -> list[dict]:
     try:
-        parsed = ipaddress.ip_address(address)
-        return parsed.version == 4 and (parsed.is_private or parsed.is_loopback)
-    except ValueError:
-        return False
+        result = subprocess.run(command, capture_output=True, text=True, check=False)
+        if result.returncode:
+            return []
+        value = json.loads(result.stdout)
+        return value if isinstance(value, list) else []
+    except (OSError, json.JSONDecodeError):
+        return []
+
+
+def lan_ip() -> str:
+    override = os.environ.get("PORTAL_ADVERTISE_ADDRESS", "")
+    if override:
+        return override if advertised_address_allowed(override) else "127.0.0.1"
+    routes = _ip_json(["ip", "-j", "-4", "route", "show", "table", "main", "default"])
+    interfaces = _ip_json(["ip", "-j", "-4", "address", "show", "up", "scope", "global"])
+    return select_default_route_address(routes, interfaces)
 
 
 def ensure_certificate(state_dir: Path, address: str) -> tuple[Path, Path]:
@@ -521,22 +614,35 @@ def ensure_certificate(state_dir: Path, address: str) -> tuple[Path, Path]:
 def serve(
     state_dir: Path,
     web_root: Path,
-    address: str | None = None,
+    listen_address: str | None = None,
     port: int = 59443,
     tls: bool = True,
+    advertise_address: str | None = None,
+    monitor_network: bool = False,
 ):
-    address = address or lan_ip()
-    if not private_bind(address):
+    if advertise_address is None:
+        advertise_address = (
+            listen_address
+            if listen_address not in (None, "0.0.0.0")
+            else lan_ip()
+        )
+    if listen_address is None:
+        listen_address = (
+            "127.0.0.1" if loopback_address(advertise_address) else "0.0.0.0"
+        )
+    if not listen_address_allowed(listen_address):
         raise RuntimeError("Portal refuses to bind a public or non-IPv4 address")
+    if not advertised_address_allowed(advertise_address):
+        raise RuntimeError("Portal refuses to advertise a public or non-IPv4 address")
     scheme = "https" if tls else "http"
-    core = PortalCore(state_dir, base_url=f"{scheme}://{address}:{port}")
-    server = PortalHTTPServer((address, port), Handler, core, web_root)
+    core = PortalCore(state_dir, base_url=f"{scheme}://{advertise_address}:{port}")
+    server = PortalHTTPServer((listen_address, port), Handler, core, web_root)
     server.allowed_origins = {
-        f"{scheme}://{address}:{port}",
+        f"{scheme}://{advertise_address}:{port}",
         f"{scheme}://127.0.0.1:{port}",
     }
     if tls:
-        cert, key = ensure_certificate(state_dir, address)
+        cert, key = ensure_certificate(state_dir, advertise_address)
         context = ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER)
         context.minimum_version = ssl.TLSVersion.TLSv1_2
         context.load_cert_chain(cert, key)
@@ -550,11 +656,40 @@ def serve(
 
     signal.signal(signal.SIGTERM, shutdown)
     signal.signal(signal.SIGINT, shutdown)
+    network_thread = None
+    if monitor_network:
+
+        def watch_network():
+            previous_mismatch = None
+            while not stop.wait(3):
+                current = lan_ip()
+                if current == advertise_address:
+                    previous_mismatch = None
+                elif current == previous_mismatch:
+                    shutdown()
+                    return
+                else:
+                    previous_mismatch = current
+
+        network_thread = threading.Thread(target=watch_network, daemon=True)
+        network_thread.start()
     print(
-        json.dumps({"status": "ready", "url": core.base_url, "pid": os.getpid()}),
+        json.dumps(
+            {
+                "status": "ready",
+                "url": core.base_url,
+                "listen_address": listen_address,
+                "advertise_address": advertise_address,
+                "port": server.server_address[1],
+                "pid": os.getpid(),
+            }
+        ),
         flush=True,
     )
     try:
         server.serve_forever(poll_interval=0.5)
     finally:
+        stop.set()
         server.server_close()
+        if network_thread:
+            network_thread.join(1)

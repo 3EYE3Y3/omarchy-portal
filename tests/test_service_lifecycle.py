@@ -20,6 +20,10 @@ class ServiceLifecycleTests(unittest.TestCase):
         self.assertIn('Qt.resolvedUrl("bin/portal")', source)
         self.assertIn("Component.onCompleted: daemon.running = true", source)
 
+    def test_displayed_pairing_url_comes_from_the_advertised_pairing_url(self):
+        source = (ROOT / "Panel.qml").read_text()
+        self.assertIn("root.pairing?.url", source)
+
     def test_unexpected_exit_keeps_the_three_second_restart_contract(self):
         source = (ROOT / "Service.qml").read_text()
         self.assertIn("interval: 3000", source)

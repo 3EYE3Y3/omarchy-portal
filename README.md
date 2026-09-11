@@ -6,7 +6,7 @@ Portal is a secure, LAN-only phone-to-Omarchy control plane. It moves context, f
 
 ![Portal desktop panel and phone preview](docs/preview.svg)
 
-Portal v0.9.1 is a **Local Acceptance Candidate** for Omarchy 4.0.2. It has no analytics, cloud account, relay or WAN mode.
+Portal v0.9.2 is a **Local Acceptance Candidate** for Omarchy 4.0.3. It has no analytics, cloud account, relay or WAN mode.
 
 ## What it does
 
@@ -21,6 +21,8 @@ Portal v0.9.1 is a **Local Acceptance Candidate** for Omarchy 4.0.2. It has no a
 ## Architecture
 
 The Omarchy plugin contains a native QML bar widget/panel and a long-lived service component. When the enabled service loads at login or after `omarchy restart shell`, it automatically starts and owns an unprivileged Python HTTPS process. A zero-framework PWA talks to that service with short-lived opaque sessions. SQLite stores hashes and metadata; transfer payloads are mode `0600` under `~/.local/state/portal/inbox`.
+
+The service listens on IPv4 interfaces but advertises only the active private source address selected from the kernel's main default route. QR codes, the displayed URL, TLS certificate and browser-origin policy use that advertised address; VPN and container addresses are not chosen merely because they exist.
 
 See [Architecture](docs/ARCHITECTURE.md), [Security](SECURITY.md), [Privacy](docs/PRIVACY.md), and [upstream compatibility](docs/UPSTREAM_COMPATIBILITY.md).
 
@@ -111,7 +113,7 @@ portal doctor
 ./scripts/quality
 ```
 
-The quality command runs 43+ domain/edge tests, Python bytecode/static safety checks, JS syntax validation, bash syntax, QML lint when installed, the authoritative Omarchy manifest validator, and `git diff --check`.
+The quality command runs 68 domain/edge tests, Python bytecode/static safety checks, JS syntax validation, bash syntax, QML lint when installed, the authoritative Omarchy manifest validator, and `git diff --check`.
 
 ## Uninstall
 

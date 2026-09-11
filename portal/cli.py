@@ -10,13 +10,21 @@ import subprocess
 import sys
 import time
 from pathlib import Path
+from urllib.parse import urlsplit
 
 from . import __version__
 from .backend import BackendError
 from .core import ALL_CAPABILITIES, PortalCore, PortalError
 from .doctor import report as doctor_report
 from .qr import matrix
-from .service import ensure_certificate, lan_ip, private_bind, serve
+from .service import (
+    advertised_address_allowed,
+    ensure_certificate,
+    lan_ip,
+    listen_address_allowed,
+    loopback_address,
+    serve,
+)
 
 PLUGIN_ROOT = Path(__file__).resolve().parent.parent
 
@@ -25,11 +33,27 @@ def state_dir() -> Path:
     return Path(os.environ.get("PORTAL_STATE_DIR", Path.home() / ".local/state/portal"))
 
 
+def active_runtime() -> dict:
+    try:
+        runtime = json.loads((state_dir() / "runtime.json").read_text())
+        pid = int(runtime["pid"])
+        os.kill(pid, 0)
+        cmdline = Path(f"/proc/{pid}/cmdline").read_bytes().replace(b"\0", b" ")
+        if b"portal.cli" not in cmdline and b"/bin/portal" not in cmdline:
+            raise OSError("runtime PID does not belong to Portal")
+        return runtime
+    except (OSError, KeyError, TypeError, ValueError, json.JSONDecodeError):
+        return {}
+
+
 def base_url() -> str:
-    return os.environ.get(
-        "PORTAL_BASE_URL",
-        f"https://{lan_ip()}:{os.environ.get('PORTAL_PORT', '59443')}",
-    )
+    override = os.environ.get("PORTAL_BASE_URL")
+    if override:
+        return override
+    runtime = active_runtime()
+    if runtime.get("url"):
+        return str(runtime["url"])
+    return f"https://{lan_ip()}:{os.environ.get('PORTAL_PORT', '59443')}"
 
 
 def core() -> PortalCore:
@@ -46,18 +70,8 @@ def output(value, as_json=False):
 
 
 def runtime_status(c: PortalCore) -> dict:
-    runtime_path = state_dir() / "runtime.json"
-    running, runtime = False, {}
-    try:
-        runtime = json.loads(runtime_path.read_text())
-        pid = int(runtime["pid"])
-        os.kill(pid, 0)
-        cmdline = Path(f"/proc/{pid}/cmdline").read_bytes().replace(b"\0", b" ")
-        if b"portal.cli" not in cmdline and b"/bin/portal" not in cmdline:
-            raise OSError("runtime PID does not belong to Portal")
-        running = True
-    except (OSError, KeyError, ValueError, json.JSONDecodeError):
-        pass
+    runtime = active_runtime()
+    running = bool(runtime)
     pending = c.pending_pairs()
     devices = c.devices()
     try:
@@ -68,6 +82,9 @@ def runtime_status(c: PortalCore) -> dict:
         "version": __version__,
         "running": running,
         "url": runtime.get("url", c.base_url),
+        "listen_address": runtime.get("listen_address"),
+        "advertise_address": runtime.get("advertise_address"),
+        "port": runtime.get("port"),
         "pid": runtime.get("pid"),
         "pending": pending,
         "devices": devices,
@@ -84,7 +101,8 @@ def parser() -> argparse.ArgumentParser:
         q = sub.add_parser(name)
         q.add_argument("--json", action="store_true")
     q = sub.add_parser("serve")
-    q.add_argument("--bind", default=None)
+    q.add_argument("--bind", default=os.environ.get("PORTAL_BIND_ADDRESS"))
+    q.add_argument("--advertise", default=os.environ.get("PORTAL_ADVERTISE_ADDRESS"))
     q.add_argument(
         "--port", type=int, default=int(os.environ.get("PORTAL_PORT", "59443"))
     )
@@ -143,7 +161,8 @@ def main(argv=None) -> int:
             value = c.start_pairing()
             value["qr"] = matrix(value["url"])
             value.pop("secret", None)
-            cert, _ = ensure_certificate(state_dir(), lan_ip())
+            certificate_address = urlsplit(c.base_url).hostname or lan_ip()
+            cert, _ = ensure_certificate(state_dir(), certificate_address)
             value["certificate_sha256"] = hashlib.sha256(cert.read_bytes()).hexdigest()
             output(value, args.json)
         elif args.command == "approve":
@@ -195,12 +214,28 @@ def main(argv=None) -> int:
                         status = "READY" if ok else "UNAVAILABLE"
                     print(f"{label:<24} {status}")
         elif args.command == "serve":
-            address = args.bind or lan_ip()
-            if not private_bind(address):
+            monitor_network = args.advertise is None and args.bind is None
+            listen_address = args.bind
+            advertise_address = args.advertise
+            if advertise_address is None:
+                advertise_address = (
+                    listen_address
+                    if listen_address not in (None, "0.0.0.0")
+                    else lan_ip()
+                )
+            if not advertised_address_allowed(advertise_address):
+                raise PortalError("Portal refuses public or non-IPv4 advertised addresses")
+            if listen_address is None:
+                listen_address = (
+                    "127.0.0.1"
+                    if loopback_address(advertise_address)
+                    else "0.0.0.0"
+                )
+            if not listen_address_allowed(listen_address):
                 raise PortalError("Portal refuses public or non-IPv4 bind addresses")
             if (
                 args.no_tls
-                and address not in {"127.0.0.1", "localhost", "::1"}
+                and not loopback_address(listen_address)
                 and os.environ.get("PORTAL_ALLOW_INSECURE") != "1"
             ):
                 raise PortalError(
@@ -213,7 +248,10 @@ def main(argv=None) -> int:
                 json.dumps(
                     {
                         "pid": os.getpid(),
-                        "url": f"{scheme}://{address}:{args.port}",
+                        "url": f"{scheme}://{advertise_address}:{args.port}",
+                        "listen_address": listen_address,
+                        "advertise_address": advertise_address,
+                        "port": args.port,
                         "started": time.time(),
                     }
                 )
@@ -223,9 +261,11 @@ def main(argv=None) -> int:
                 serve(
                     state_dir(),
                     PLUGIN_ROOT / "web",
-                    address,
+                    listen_address,
                     args.port,
                     not args.no_tls,
+                    advertise_address,
+                    monitor_network,
                 )
             finally:
                 try:

@@ -13,6 +13,10 @@ The Python package has four boundaries:
 
 The PWA is `web/index.html`, `style.css`, and `app.js`. It uses polling on deliberate refreshes rather than an always-open socket. This makes reconnect behavior simple and leaves no WebSocket authentication surface in v0.9.
 
+## Local network selection
+
+Listen and advertised addresses are separate. With a usable LAN route the HTTPS socket listens on `0.0.0.0`; QR codes, panel URLs, TLS identity and origin checks use a validated RFC1918 address. Portal reads the kernel's main IPv4 default routes, prefers gateway-backed routes and then their metrics, and accepts the route's preferred source only when it is still assigned to the same active interface. If the route omits or has a stale source, Portal selects an active private address on that route interface, preferring one sharing the gateway subnet. Unrelated tunnel and container addresses are never used as arbitrary fallbacks. With no usable route, Portal listens on and advertises loopback. A stable route change shuts down the shell-owned daemon, whose existing lifecycle contract restarts it with fresh addressing and TLS identity.
+
 ## Pairing protocol
 
 1. PC generates random `P`, stores `SHA256(P)` plus five-minute expiry, and encodes `https://LAN-IP:59443/#pair=P`.
@@ -54,4 +58,3 @@ Text is stored only as needed for Inbox semantics. Secure items receive short ex
 ## Optional X-Ray
 
 Availability is `PATH` capability detection. Window detail invokes only the documented external shape `xray --json <address>` with a two-second deadline. It accepts only a JSON object. Absence, timeout, non-zero exit and malformed data all become `null`, hiding Inspect without changing Portal behavior.
-
