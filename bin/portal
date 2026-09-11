@@ -1,0 +1,5 @@
+#!/usr/bin/env bash
+set -euo pipefail
+PORTAL_ROOT="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)"
+export PYTHONPATH="$PORTAL_ROOT${PYTHONPATH:+:$PYTHONPATH}"
+exec python3 -m portal.cli "$@"

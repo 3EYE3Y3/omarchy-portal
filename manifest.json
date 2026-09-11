@@ -1,0 +1,21 @@
+{
+  "schemaVersion": 1,
+  "id": "io.github.3eye3y3.portal",
+  "name": "Portal",
+  "version": "0.9.0",
+  "author": "3EYE3Y3",
+  "description": "Your PC, in your pocket — a secure phone-to-Omarchy control plane",
+  "kinds": ["service", "bar-widget"],
+  "entryPoints": {
+    "service": "Service.qml",
+    "barWidget": "BarWidget.qml"
+  },
+  "barWidget": {
+    "displayName": "Portal",
+    "description": "Pair a phone, hand off context, and control Omarchy",
+    "category": "Connectivity",
+    "defaultSection": "right",
+    "allowMultiple": false
+  }
+}
+
