@@ -2,7 +2,7 @@
 
 Portal has no analytics, telemetry, advertising ID, tracking pixel, crash upload, cloud backend, account system or external service dependency. It does not contact GitHub or any registry while running.
 
-Phone/PC requests and transfers use the advertised local default-route address. The HTTPS service logs only method, normalized path and result code. It never logs query strings, request bodies, clipboard/secret content, authorization values, pairing values, marker values, filenames or URLs.
+Phone/PC requests and transfers use the advertised local default-route address. The HTTPS service logs only method, normalized path and result code. A failed TLS handshake adds the peer address, OpenSSL reason and a coarse failure category; it does not log ClientHello bytes. Portal never logs query strings, request bodies, clipboard/secret content, authorization values, pairing values, marker values, filenames or URLs.
 
 Local state is under `~/.local/state/portal`:
 

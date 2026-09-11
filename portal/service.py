@@ -6,6 +6,7 @@ import ipaddress
 import json
 import mimetypes
 import os
+import re
 import signal
 import ssl
 import subprocess
@@ -15,8 +16,13 @@ import urllib.parse
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 
+from . import __version__
 from .backend import BackendError
 from .core import MAX_FILE, PortalCore, PortalError
+
+
+CERTIFICATE_RENEWAL_SECONDS = 172800
+CERTIFICATE_RSA_BITS = 3072
 
 
 class PortalHTTPServer(ThreadingHTTPServer):
@@ -28,6 +34,72 @@ class PortalHTTPServer(ThreadingHTTPServer):
         self.core = core
         self.web_root = web_root
         self.allowed_origins: set[str] = set()
+        self.tls_context: ssl.SSLContext | None = None
+
+    def get_request(self):
+        request, client_address = super().get_request()
+        if self.tls_context is None:
+            return request, client_address
+        try:
+            return (
+                self.tls_context.wrap_socket(request, server_side=True),
+                client_address,
+            )
+        except ssl.SSLError as exc:
+            request.close()
+            reason = (exc.reason or exc.__class__.__name__).upper()
+            library = (exc.library or "SSL").upper()
+            category = tls_failure_category(reason)
+            print(
+                "portal-tls"
+                f" peer={client_address[0]}"
+                f" category={category}"
+                f" library={library}"
+                f" reason={reason}"
+                f" errno={exc.errno}",
+                file=sys.stderr,
+                flush=True,
+            )
+            raise
+
+
+def tls_failure_category(reason: str) -> str:
+    normalized = reason.upper()
+    if any(
+        marker in normalized
+        for marker in (
+            "NO_SHARED_CIPHER",
+            "NO_SUITABLE_SIGNATURE_ALGORITHM",
+            "NO_SHARED_SIGNATURE_ALGORITHMS",
+        )
+    ):
+        return "cipher_or_signature"
+    if any(
+        marker in normalized
+        for marker in (
+            "UNSUPPORTED_PROTOCOL",
+            "WRONG_VERSION_NUMBER",
+            "VERSION_TOO_LOW",
+            "VERSION_TOO_HIGH",
+        )
+    ):
+        return "unsupported_protocol"
+    if any(
+        marker in normalized
+        for marker in (
+            "BAD_RECORD",
+            "DECODE_ERROR",
+            "HTTP_REQUEST",
+            "LENGTH_TOO_LONG",
+            "PACKET_LENGTH_TOO_LONG",
+            "RECORD_OVERFLOW",
+            "UNEXPECTED_MESSAGE",
+        )
+    ):
+        return "malformed_handshake"
+    if "CERTIFICATE" in normalized or "UNKNOWN_CA" in normalized:
+        return "certificate"
+    return "other_ssl_error"
 
 
 class Handler(BaseHTTPRequestHandler):
@@ -136,7 +208,7 @@ class Handler(BaseHTTPRequestHandler):
             parsed = self.parsed()
             path = parsed.path
             if path == "/api/health":
-                return self.json(200, {"status": "ready", "version": "0.9.2"})
+                return self.json(200, {"status": "ready", "version": __version__})
             if path.startswith("/api/pair/"):
                 request_id = path.rsplit("/", 1)[-1]
                 claim = self.headers.get("X-Portal-Claim", "")
@@ -560,42 +632,91 @@ def lan_ip() -> str:
     return select_default_route_address(routes, interfaces)
 
 
+def _certificate_is_compatible(cert: Path, key: Path, address: str) -> bool:
+    if not cert.exists() or not key.exists():
+        return False
+    checks = (
+        ["openssl", "x509", "-in", str(cert), "-noout", "-checkip", address],
+        ["openssl", "x509", "-in", str(cert), "-noout", "-checkip", "127.0.0.1"],
+        ["openssl", "x509", "-in", str(cert), "-noout", "-checkhost", "localhost"],
+        [
+            "openssl",
+            "x509",
+            "-in",
+            str(cert),
+            "-noout",
+            "-checkend",
+            str(CERTIFICATE_RENEWAL_SECONDS),
+        ],
+    )
+    if any(
+        subprocess.run(command, capture_output=True, check=False).returncode
+        for command in checks
+    ):
+        return False
+    details = subprocess.run(
+        ["openssl", "x509", "-in", str(cert), "-noout", "-text"],
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    required = (
+        "Public Key Algorithm: rsaEncryption",
+        "Signature Algorithm: sha256WithRSAEncryption",
+        "CA:FALSE",
+        "Digital Signature",
+        "TLS Web Server Authentication",
+    )
+    if details.returncode or not all(value in details.stdout for value in required):
+        return False
+    match = re.search(r"Public-Key: \((\d+) bit\)", details.stdout)
+    if not match or int(match.group(1)) < CERTIFICATE_RSA_BITS:
+        return False
+    cert_public_key = subprocess.run(
+        ["openssl", "x509", "-in", str(cert), "-noout", "-pubkey"],
+        capture_output=True,
+        check=False,
+    )
+    key_public_key = subprocess.run(
+        ["openssl", "pkey", "-in", str(key), "-pubout"],
+        capture_output=True,
+        check=False,
+    )
+    return (
+        cert_public_key.returncode == 0
+        and key_public_key.returncode == 0
+        and cert_public_key.stdout == key_public_key.stdout
+    )
+
+
 def ensure_certificate(state_dir: Path, address: str) -> tuple[Path, Path]:
     cert, key = state_dir / "tls.crt", state_dir / "tls.key"
-    if cert.exists() and key.exists():
-        ip_ok = (
-            subprocess.run(
-                ["openssl", "x509", "-in", str(cert), "-noout", "-checkip", address],
-                capture_output=True,
-                check=False,
-            ).returncode
-            == 0
-        )
-        fresh = (
-            subprocess.run(
-                ["openssl", "x509", "-in", str(cert), "-noout", "-checkend", "172800"],
-                capture_output=True,
-                check=False,
-            ).returncode
-            == 0
-        )
-        if ip_ok and fresh:
-            return cert, key
+    if _certificate_is_compatible(cert, key, address):
+        return cert, key
     state_dir.mkdir(parents=True, exist_ok=True, mode=0o700)
     next_cert, next_key = state_dir / "tls.crt.new", state_dir / "tls.key.new"
+    next_cert.unlink(missing_ok=True)
+    next_key.unlink(missing_ok=True)
     command = [
         "openssl",
         "req",
         "-x509",
         "-newkey",
-        "ed25519",
+        f"rsa:{CERTIFICATE_RSA_BITS}",
+        "-sha256",
         "-nodes",
         "-days",
         "30",
         "-subj",
         "/CN=Portal Local",
         "-addext",
-        f"subjectAltName=IP:{address},IP:127.0.0.1",
+        "basicConstraints=critical,CA:FALSE",
+        "-addext",
+        "keyUsage=critical,digitalSignature",
+        "-addext",
+        "extendedKeyUsage=serverAuth",
+        "-addext",
+        f"subjectAltName=IP:{address},IP:127.0.0.1,DNS:localhost",
         "-keyout",
         str(next_key),
         "-out",
@@ -603,12 +724,22 @@ def ensure_certificate(state_dir: Path, address: str) -> tuple[Path, Path]:
     ]
     result = subprocess.run(command, capture_output=True, text=True, check=False)
     if result.returncode:
+        next_cert.unlink(missing_ok=True)
+        next_key.unlink(missing_ok=True)
         raise RuntimeError("could not create Portal TLS certificate")
     os.chmod(next_key, 0o600)
     os.chmod(next_cert, 0o600)
     next_key.replace(key)
     next_cert.replace(cert)
     return cert, key
+
+
+def create_tls_context(cert: Path, key: Path) -> ssl.SSLContext:
+    context = ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER)
+    context.minimum_version = ssl.TLSVersion.TLSv1_2
+    context.set_alpn_protocols(["http/1.1"])
+    context.load_cert_chain(cert, key)
+    return context
 
 
 def serve(
@@ -643,10 +774,7 @@ def serve(
     }
     if tls:
         cert, key = ensure_certificate(state_dir, advertise_address)
-        context = ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER)
-        context.minimum_version = ssl.TLSVersion.TLSv1_2
-        context.load_cert_chain(cert, key)
-        server.socket = context.wrap_socket(server.socket, server_side=True)
+        server.tls_context = create_tls_context(cert, key)
     stop = threading.Event()
 
     def shutdown(_signum=None, _frame=None):

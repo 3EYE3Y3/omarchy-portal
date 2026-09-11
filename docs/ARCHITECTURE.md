@@ -17,6 +17,8 @@ The PWA is `web/index.html`, `style.css`, and `app.js`. It uses polling on delib
 
 Listen and advertised addresses are separate. With a usable LAN route the HTTPS socket listens on `0.0.0.0`; QR codes, panel URLs, TLS identity and origin checks use a validated RFC1918 address. Portal reads the kernel's main IPv4 default routes, prefers gateway-backed routes and then their metrics, and accepts the route's preferred source only when it is still assigned to the same active interface. If the route omits or has a stale source, Portal selects an active private address on that route interface, preferring one sharing the gateway subnet. Unrelated tunnel and container addresses are never used as arbitrary fallbacks. With no usable route, Portal listens on and advertises loopback. A stable route change shuts down the shell-owned daemon, whose existing lifecycle contract restarts it with fresh addressing and TLS identity.
 
+TLS uses Python's server context with the system OpenSSL security policy, a TLS 1.2 minimum and TLS 1.3 available. Portal generates a 30-day RSA-3072/SHA-256 leaf certificate with `CA:FALSE`, digital-signature KeyUsage, server-auth EKU, and IP/localhost SANs. This deliberately uses the broadly supported RSA signature path for mobile and desktop browsers; legacy Ed25519 certificates are replaced automatically. The server selects HTTP/1.1 through ALPN and does not require SNI or a client certificate. Failed handshakes are logged by peer address, OpenSSL reason and coarse diagnostic category without recording handshake contents.
+
 ## Pairing protocol
 
 1. PC generates random `P`, stores `SHA256(P)` plus five-minute expiry, and encodes `https://LAN-IP:59443/#pair=P`.

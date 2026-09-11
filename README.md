@@ -6,7 +6,7 @@ Portal is a secure, LAN-only phone-to-Omarchy control plane. It moves context, f
 
 ![Portal desktop panel and phone preview](docs/preview.svg)
 
-Portal v0.9.2 is a **Local Acceptance Candidate** for Omarchy 4.0.3. It has no analytics, cloud account, relay or WAN mode.
+Portal v0.9.3 is a **Local Acceptance Candidate** for Omarchy 4.0.3. It has no analytics, cloud account, relay or WAN mode.
 
 ## What it does
 
@@ -113,7 +113,7 @@ portal doctor
 ./scripts/quality
 ```
 
-The quality command runs 68 domain/edge tests, Python bytecode/static safety checks, JS syntax validation, bash syntax, QML lint when installed, the authoritative Omarchy manifest validator, and `git diff --check`.
+The quality command runs 75 domain/edge tests, including live TLS signature compatibility checks, plus Python bytecode/static safety checks, JS syntax validation, bash syntax, QML lint when installed, the authoritative Omarchy manifest validator, and `git diff --check`.
 
 ## Uninstall
 
@@ -126,7 +126,7 @@ For safety the script retains `~/.local/state/portal`; inspect it, then remove i
 ## Troubleshooting
 
 - **Phone cannot connect:** confirm both devices are on the same local network, `portal status` shows the exact address, and client isolation is disabled on the Wi-Fi network.
-- **Certificate warning:** local HTTPS uses a 30-day self-signed Ed25519 certificate. Verify the fingerprint on the PC before accepting it on the phone.
+- **Certificate warning:** local HTTPS uses a 30-day self-signed RSA-3072/SHA-256 server certificate. Verify the fingerprint on the PC before accepting it on the phone.
 - **Camera does not scan:** use a Chromium-based phone browser with `BarcodeDetector`, or select the window from **Windows**.
 - **Control says permission required:** grant `pointer` and `keyboard` explicitly with `portal device permissions`.
 - **No media bar:** start an MPRIS-capable player; the bar is hidden when there is no player or metadata.

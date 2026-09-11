@@ -4,7 +4,7 @@
 
 Portal v0.9 is for a trusted local network. With a usable LAN route it listens on the host's IPv4 interfaces so a transient VPN address cannot strand the service, but advertises only an active RFC1918 source associated with the preferred main-table default route. With no usable private route, both listen and advertised addresses fall back to loopback. It has no relay, discovery beacon, UPnP, router automation or WAN mode. A host firewall remains recommended on hostile networks.
 
-Portal protects against passive LAN interception with TLS 1.2+ and a local 30-day self-signed Ed25519 certificate. Because public WebPKI cannot issue certificates for private IP addresses, first use requires a browser certificate exception. On an untrusted LAN, verify the SHA-256 certificate fingerprint shown by:
+Portal protects against passive LAN interception with TLS 1.2+ and a local 30-day self-signed RSA-3072/SHA-256 server certificate. Its critical KeyUsage is limited to digital signatures, ExtendedKeyUsage is limited to TLS server authentication, BasicConstraints is `CA:FALSE`, and SANs identify the advertised LAN address plus loopback. Because public WebPKI cannot issue certificates for private IP addresses, first use requires a browser certificate exception. On an untrusted LAN, verify the SHA-256 certificate fingerprint shown by:
 
 ```bash
 openssl x509 -in ~/.local/state/portal/tls.crt -noout -fingerprint -sha256
