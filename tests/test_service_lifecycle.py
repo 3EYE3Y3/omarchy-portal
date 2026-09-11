@@ -30,6 +30,11 @@ class ServiceLifecycleTests(unittest.TestCase):
         self.assertIn("restartTimer.start()", source)
         self.assertIn("onTriggered: if (!daemon.running)", source)
 
+    def test_sanitized_tls_failures_reach_the_local_shell_log(self):
+        source = (ROOT / "Service.qml").read_text()
+        self.assertIn('indexOf("portal-tls ") === 0', source)
+        self.assertIn("console.warn(String(line))", source)
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -113,7 +113,7 @@ portal doctor
 ./scripts/quality
 ```
 
-The quality command runs 75 domain/edge tests, including live TLS signature compatibility checks, plus Python bytecode/static safety checks, JS syntax validation, bash syntax, QML lint when installed, the authoritative Omarchy manifest validator, and `git diff --check`.
+The quality command runs 76 domain/edge tests, including live TLS signature compatibility checks, plus Python bytecode/static safety checks, JS syntax validation, bash syntax, QML lint when installed, the authoritative Omarchy manifest validator, and `git diff --check`.
 
 ## Uninstall
 

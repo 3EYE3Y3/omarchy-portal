@@ -5,7 +5,7 @@
 - Replace the Ed25519-only self-signed identity, which causes `NO_SUITABLE_SIGNATURE_ALGORITHM` with clients that do not advertise Ed25519, with a broadly interoperable RSA-3072/SHA-256 server certificate.
 - Correct the certificate profile to `CA:FALSE` with critical digital-signature KeyUsage, server-auth ExtendedKeyUsage, and LAN IP, loopback IP, and `localhost` SANs; automatically migrate incompatible existing certificates.
 - Preserve TLS 1.2+, system cipher/security defaults, and TLS 1.3 while explicitly selecting HTTP/1.1 through ALPN.
-- Log sanitized TLS handshake failures with peer, OpenSSL reason, and protocol/cipher/signature/malformed/certificate/other classification.
+- Log sanitized TLS handshake failures to the local shell journal with peer, OpenSSL reason, and protocol/cipher/signature/malformed/certificate/other classification.
 - Add live OpenSSL regression coverage for RSA-only TLS 1.3 and TLS 1.2 ClientHellos, no-SNI IP connections, certificate migration/profile, ALPN, security defaults, and failure diagnostics.
 
 ## [0.9.2] - 2026-09-11

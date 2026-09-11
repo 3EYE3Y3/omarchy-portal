@@ -67,6 +67,8 @@ Item {
                 // The HTTP access log deliberately carries no queries, body or tokens.
                 if (String(line).indexOf("Address already in use") !== -1)
                     service.error = "Portal port is already in use";
+                if (String(line).indexOf("portal-tls ") === 0)
+                    console.warn(String(line));
             }
         }
         onExited: function (code) {
